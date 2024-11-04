@@ -1,0 +1,25 @@
+train_test_split_is: True
+hyperparameters_optimization_is: False
+save_model: "models/log_reg/model.pkl"
+predict_and_save_test_data: True
+
+clearml:
+  project_name: "Alfa_hack"
+  task_name: "Test"
+  queue: null
+
+dataset_train:
+  project_name: "Alfa_hack"
+  dataset_name: "train_data_01"
+  file_name: "train_data_01.parquet"
+  target_columns: target
+
+dataset_test:
+  project_name: "Alfa_hack"
+  dataset_name: "test_dataset"
+  file_name: "test_dataset.parquet"
+
+model:
+  C: 0.01
+  random_state: 98
+  max_iter: 150
