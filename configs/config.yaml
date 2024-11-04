@@ -1,7 +1,7 @@
 train_test_split_is: True
-hyperparameters_optimization_is: False
+hyperparameters_optimization_is: True
 save_model: "models/log_reg/model.pkl"
-predict_and_save_test_data: True
+predict_and_save_test_data: False
 
 clearml:
   project_name: "Alfa_hack"
@@ -23,3 +23,6 @@ model:
   C: 0.01
   random_state: 98
   max_iter: 150
+
+hyperparameters:
+  n_trials: 10

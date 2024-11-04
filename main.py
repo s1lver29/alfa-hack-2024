@@ -1,8 +1,9 @@
 import hydra
+import joblib
 import polars as pl
 from clearml import Logger, Task
 from omegaconf import DictConfig
-import joblib
+import optuna
 
 from metrics import calculate_classification_metrics, calculation_confusion_matrix
 from model import predict, train_model
@@ -48,8 +49,6 @@ class MLWorkflow:
 
     def train(self, data):
         """Обучение модели"""
-
-        # Обучение модели
         self.model = train_model(
             data=data["train"].drop(self.config.dataset_train.target_columns),
             target=data["train"].select(self.config.dataset_train.target_columns),
@@ -72,8 +71,44 @@ class MLWorkflow:
         # Логирование метрик и матрицы ошибок
         self.logger.report_text(metrics)
         self.logger.report_confusion_matrix(
-            title="Confusion matrix", series="series", matrix=conf_matrix, iteration=1
+            title="Confusion matrix", series="ignored", matrix=conf_matrix
         )
+
+    def optimize_hyperparameters(self, train_data, val_data):
+        """Оптимизация гиперпараметров с использованием Optuna."""
+
+        def objective(trial):
+            params = {
+                "C": trial.suggest_loguniform("C", 1e-3, 1e1),
+                "random_state": self.config.model.get("random_state", 42),
+            }
+
+            model = train_model(
+                data=train_data.drop(self.config.dataset_train.target_columns),
+                target=train_data.select(self.config.dataset_train.target_columns),
+                **params,
+            )
+
+            predictions = predict(
+                model,
+                val_data.drop(self.config.dataset_train.target_columns),
+                predict_proba_is=False,
+            )
+            metrics = calculate_classification_metrics(
+                val_data.select(self.config.dataset_train.target_columns), predictions
+            )
+
+            for name, score in metrics.items():
+                self.logger.report_scalar(
+                    title=name, series="series", value=score, iteration=trial.number
+                )
+
+            return metrics["f1-score"]
+
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=self.config.hyperparameters.n_trials)
+
+        self.logger.report_text(f"Best hyperparameters: {study.best_params}")
 
     def predict_on_test_data(self):
         """Выполнение предсказаний на тестовом наборе данных."""
@@ -108,24 +143,34 @@ class MLWorkflow:
 
         data = self.load_data()
 
-        if self.config.train_test_split_is:
-            self.logger.report_text("Train model and evaluate on validation data")
-            self.train(data)
-            self.evaluate_model(data)
+        if self.config.hyperparameters_optimization_is:
+            # Разделение данных на train, validation, test
+            train_data, val_data = data["train"], data["test"]
+            self.optimize_hyperparameters(train_data, val_data)
+
+            # Обучаем на train+validation с лучшими параметрами
+            # train_val_data = pl.concat([train_data, val_data])
+            # self.train_with_best_params(train_val_data)
+
         else:
-            self.logger.report_text("Training model on full dataset")
-            self.train(data)
+            if self.config.train_test_split_is:
+                self.logger.report_text("Train model and evaluate on validation data")
+                self.train(data)
+                self.evaluate_model(data)
+            else:
+                self.logger.report_text("Training model on full dataset")
+                self.train(data)
 
-        if self.config.save_model:
-            self.logger.report_text("Save model")
-            joblib.dump(self.model, self.config.save_model, compress=True)
-            # self.task.upload_artifact(name="trained_model", artifact_object=self.model)
+            if self.config.save_model:
+                self.logger.report_text("Save model")
+                joblib.dump(self.model, self.config.save_model, compress=True)
+                # self.task.upload_artifact(name="trained_model", artifact_object=self.model)
 
-        # Предсказания и сохранение, если указано
-        if self.config.predict_and_save_test_data:
-            self.logger.report_text("Prediction test data and save prediction")
-            predictions_df = self.predict_on_test_data()
-            self.save_submission(predictions_df)
+            # Предсказания и сохранение, если указано
+            if self.config.predict_and_save_test_data:
+                self.logger.report_text("Prediction test data and save prediction")
+                predictions_df = self.predict_on_test_data()
+                self.save_submission(predictions_df)
 
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
