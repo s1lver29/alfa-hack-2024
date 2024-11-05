@@ -1,9 +1,9 @@
-from sklearn.linear_model import LogisticRegression
 import polars as pl
+from xgboost import XGBClassifier
 
 
 def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-    model = LogisticRegression(**args_model)
+    model = XGBClassifier(**args_model)
 
     model.fit(data, target)
 

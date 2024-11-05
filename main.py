@@ -1,9 +1,11 @@
 import hydra
 import joblib
+import numpy as np
+import optuna
 import polars as pl
 from clearml import Logger, Task
 from omegaconf import DictConfig
-import optuna
+from sklearn.model_selection import StratifiedKFold
 
 from metrics import calculate_classification_metrics, calculation_confusion_matrix
 from model import predict, train_model
@@ -50,22 +52,22 @@ class MLWorkflow:
     def train(self, data):
         """Обучение модели"""
         self.model = train_model(
-            data=data["train"].drop(self.config.dataset_train.target_columns),
-            target=data["train"].select(self.config.dataset_train.target_columns),
+            data=data.drop(self.config.dataset_train.target_columns),
+            target=data.select(self.config.dataset_train.target_columns),
             **self.config.model,
         )
 
     def evaluate_model(self, data):
         predictions = predict(
             self.model,
-            data["test"].drop(self.config.dataset_train.target_columns),
+            data.drop(self.config.dataset_train.target_columns),
             predict_proba_is=False,
         )
         metrics = calculate_classification_metrics(
-            data["test"].select(self.config.dataset_train.target_columns), predictions
+            data.select(self.config.dataset_train.target_columns), predictions
         )
         conf_matrix = calculation_confusion_matrix(
-            data["test"].select(self.config.dataset_train.target_columns), predictions
+            data.select(self.config.dataset_train.target_columns), predictions
         )
 
         # Логирование метрик и матрицы ошибок
@@ -74,41 +76,78 @@ class MLWorkflow:
             title="Confusion matrix", series="ignored", matrix=conf_matrix
         )
 
-    def optimize_hyperparameters(self, train_data, val_data):
+    def optimize_hyperparameters(
+        self, train_data, val_data, n_splits: int = 3, random_state: int = 42
+    ):
         """Оптимизация гиперпараметров с использованием Optuna."""
+        skf = StratifiedKFold(
+            n_splits=n_splits, shuffle=True, random_state=random_state
+        )
+        train_data, train_target = (
+            train_data.drop(self.config.dataset_train.target_columns),
+            train_data.select(self.config.dataset_train.target_columns),
+        )
 
         def objective(trial):
             params = {
-                "C": trial.suggest_loguniform("C", 1e-3, 1e1),
-                "random_state": self.config.model.get("random_state", 42),
+                "objective": "binary:logistic",
+                "eval_metric": "logloss",
+                "tree_method": "hist",
+                "device": "cuda",
+                # "num_parallel_tree": trial.suggest_int("num_parallel_tree", 1, 6),
+                "max_depth": trial.suggest_int("max_depth", 3, 4),
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 0.00001, 0.1, log=True
+                ),
+                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+                "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+                "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+                "gamma": trial.suggest_float("gamma", 0, 5),
+                "scale_pos_weight": 1,  # Баланс классов
+                "random_state": trial.suggest_int("random_state", 1, 250),
+                "max_delta_step": trial.suggest_float("max_delta_step", 0, 10),
+                "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
+                "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
             }
+            fold_metrics = {"f1-score": [], "precision": [], "recall": []}
 
-            model = train_model(
-                data=train_data.drop(self.config.dataset_train.target_columns),
-                target=train_data.select(self.config.dataset_train.target_columns),
-                **params,
-            )
+            for train_index, val_index in skf.split(train_data, train_target):
+                X_train, X_val = train_data[train_index], train_data[val_index]
+                y_train, y_val = train_target[train_index], train_target[val_index]
 
-            predictions = predict(
-                model,
-                val_data.drop(self.config.dataset_train.target_columns),
-                predict_proba_is=False,
-            )
-            metrics = calculate_classification_metrics(
-                val_data.select(self.config.dataset_train.target_columns), predictions
-            )
+                model = train_model(X_train, y_train, **params)
 
-            for name, score in metrics.items():
+                y_pred = predict(model, X_val, predict_proba_is=False)
+
+                metrics = calculate_classification_metrics(y_val, y_pred)
+
+                for name, score in metrics.items():
+                    fold_metrics[name].append(score)
+
+            for name, scores in fold_metrics.items():
+                scores = np.array(scores)
                 self.logger.report_scalar(
-                    title=name, series="series", value=score, iteration=trial.number
+                    title="Mean metrics CV fold",
+                    series=f"Mean {name}",
+                    value=scores.mean(),
+                    iteration=trial.number,
+                )
+                self.logger.report_scalar(
+                    title="Mean metrics CV fold",
+                    series=f"Std {name}",
+                    value=scores.std(),
+                    iteration=trial.number,
                 )
 
-            return metrics["f1-score"]
+            return np.array(fold_metrics["f1-score"]).mean()
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=self.config.hyperparameters.n_trials)
 
         self.logger.report_text(f"Best hyperparameters: {study.best_params}")
+
+        return study.best_params
 
     def predict_on_test_data(self):
         """Выполнение предсказаний на тестовом наборе данных."""
@@ -144,19 +183,22 @@ class MLWorkflow:
         data = self.load_data()
 
         if self.config.hyperparameters_optimization_is:
-            # Разделение данных на train, validation, test
             train_data, val_data = data["train"], data["test"]
-            self.optimize_hyperparameters(train_data, val_data)
+            best_params = self.optimize_hyperparameters(train_data, val_data)
 
-            # Обучаем на train+validation с лучшими параметрами
-            # train_val_data = pl.concat([train_data, val_data])
-            # self.train_with_best_params(train_val_data)
+            # Обучаем с лучшими параметрами
+            self.model = train_model(
+                data=train_data.drop(self.config.dataset_train.target_columns),
+                target=train_data.select(self.config.dataset_train.target_columns),
+                **best_params,
+            )
+            self.evaluate_model(val_data)
 
         else:
             if self.config.train_test_split_is:
                 self.logger.report_text("Train model and evaluate on validation data")
-                self.train(data)
-                self.evaluate_model(data)
+                self.train(data["train"])
+                self.evaluate_model(data["test"])
             else:
                 self.logger.report_text("Training model on full dataset")
                 self.train(data)

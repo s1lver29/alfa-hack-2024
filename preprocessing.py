@@ -29,13 +29,12 @@ def load_data(
     if data["smpl"].head(1)[0] == "train":
         data = data.drop("id")
     data = data.drop("smpl")
-    data = data.head(1000)
 
     if train_test_split_is:
         train_data, test_data = train_test_split(
             data,
             shuffle=True,
-            test_size=0.2,
+            test_size=0.1,
             stratify=data.select(target),
         )
 
