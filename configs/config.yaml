@@ -1,17 +1,17 @@
-train_test_split_is: True
-hyperparameters_optimization_is: True
+train_test_split_is: False
+hyperparameters_optimization_is: False
 save_model: null
-predict_and_save_test_data: False
+predict_and_save_test_data: True
 
 clearml:
   project_name: "Alfa_hack"
-  task_name: "XGBoost hyperparameters sub_train_dataset 05.11.24"
+  task_name: "XGBoost train sub_train_dataset 05.11.24 v1.1"
   queue: null
 
 dataset_train:
   project_name: "Alfa_hack"
-  dataset_name: "train_data_sub"
-  file_name: "sub_train_dataset.parquet"
+  dataset_name: "train_data_full"
+  file_name: "train_dataset.parquet"
   target_columns: target
 
 dataset_test:
@@ -20,9 +20,22 @@ dataset_test:
   file_name: "test_dataset.parquet"
 
 model:
-  C: 0.01
-  random_state: 98
-  max_iter: 150
+  objective: "binary:logistic"
+  eval_metric: "logloss"
+  tree_method: "hist"
+  device: "cuda"
+  max_depth: 9
+  learning_rate: 0.033837111689684736
+  n_estimators: 826
+  subsample: 0.896949667796945
+  colsample_bytree: 0.659587529547645
+  min_child_weight: 1
+  gamma: 4.715734894425381
+  random_state: 7
+  scale_pos_weight: 28
+  max_delta_step: 1.730584380845266
+  reg_alpha: 7.667845183285583
+  reg_lambda: 1.0747337525269672e-06
 
 hyperparameters:
-  n_trials: 250
+  n_trials: 100

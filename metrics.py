@@ -1,4 +1,9 @@
-from sklearn.metrics import precision_recall_fscore_support, roc_curve, confusion_matrix
+from sklearn.metrics import (
+    precision_recall_fscore_support,
+    roc_curve,
+    confusion_matrix,
+    roc_auc_score,
+)
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -6,6 +11,7 @@ import numpy as np
 def calculate_classification_metrics(
     y_true: np.ndarray | list[int],
     y_pred: np.ndarray | list[int],
+    y_pred_proba: np.ndarray | list[float],
     average: str = "binary",
 ) -> dict[str, float]:
     """
@@ -19,10 +25,13 @@ def calculate_classification_metrics(
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average=average
     )
+    roc_auc = roc_auc_score(y_true, y_pred_proba)
+
     metrics = {
         "precision": precision,
         "recall": recall,
         "f1-score": f1,
+        "roc_auc_score": roc_auc,
     }
 
     return metrics

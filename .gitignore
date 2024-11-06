@@ -165,3 +165,4 @@ outputs/
 data/
 models/
 *.csv
+.vscode

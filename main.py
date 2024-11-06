@@ -63,8 +63,16 @@ class MLWorkflow:
             data.drop(self.config.dataset_train.target_columns),
             predict_proba_is=False,
         )
+        predict_proba = predict(
+            self.model,
+            data.drop(self.config.dataset_train.target_columns),
+            predict_proba_is=True,
+        )
+
         metrics = calculate_classification_metrics(
-            data.select(self.config.dataset_train.target_columns), predictions
+            data.select(self.config.dataset_train.target_columns),
+            predictions,
+            predict_proba,
         )
         conf_matrix = calculation_confusion_matrix(
             data.select(self.config.dataset_train.target_columns), predictions
@@ -94,8 +102,7 @@ class MLWorkflow:
                 "eval_metric": "logloss",
                 "tree_method": "hist",
                 "device": "cuda",
-                # "num_parallel_tree": trial.suggest_int("num_parallel_tree", 1, 6),
-                "max_depth": trial.suggest_int("max_depth", 3, 4),
+                "max_depth": trial.suggest_int("max_depth", 3, 16),
                 "learning_rate": trial.suggest_float(
                     "learning_rate", 0.00001, 0.1, log=True
                 ),
@@ -110,7 +117,12 @@ class MLWorkflow:
                 "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
                 "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
             }
-            fold_metrics = {"f1-score": [], "precision": [], "recall": []}
+            fold_metrics = {
+                "f1-score": [],
+                "precision": [],
+                "recall": [],
+                "roc_auc_score": [],
+            }
 
             for train_index, val_index in skf.split(train_data, train_target):
                 X_train, X_val = train_data[train_index], train_data[val_index]
@@ -119,8 +131,9 @@ class MLWorkflow:
                 model = train_model(X_train, y_train, **params)
 
                 y_pred = predict(model, X_val, predict_proba_is=False)
+                y_pred_proba = predict(model, X_val, predict_proba_is=True)
 
-                metrics = calculate_classification_metrics(y_val, y_pred)
+                metrics = calculate_classification_metrics(y_val, y_pred, y_pred_proba)
 
                 for name, score in metrics.items():
                     fold_metrics[name].append(score)
@@ -140,7 +153,7 @@ class MLWorkflow:
                     iteration=trial.number,
                 )
 
-            return np.array(fold_metrics["f1-score"]).mean()
+            return np.array(fold_metrics["roc_auc_score"]).mean()
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=self.config.hyperparameters.n_trials)
