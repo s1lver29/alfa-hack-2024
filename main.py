@@ -153,9 +153,7 @@ class MLWorkflow:
         """Выполнение предсказаний на тестовом наборе данных."""
         test_data = self.load_data(dataset_type="test")
         predictions = predict(self.model, test_data.drop("id"), predict_proba_is=True)
-        predictions_df = pl.DataFrame(
-            {"id": test_data["id"], "prediction": predictions}
-        )
+        predictions_df = pl.DataFrame({"id": test_data["id"], "target": predictions})
 
         return predictions_df
 
