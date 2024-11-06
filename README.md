@@ -16,6 +16,6 @@ YAML файл:
 - [x] делать ли после тренировки замер метрик и прочего, что будет добавлено кодом
 
 
-| Модель | Ссылка на эксперимент | Ссылка на ветку |
-|:------:|:---------------------:|:---------------:|
-|XGBoost|[ссылка](https://app.clear.ml/projects/d9a3d27351d942639a3a8a5fcd336006/experiments/9acbf0f2089b4593963b027dadf5fc46/hyper-params/configuration/OmegaConf?columns=selected&columns=name&columns=tags&columns=status&columns=project.name&columns=users&columns=started&columns=last_update&columns=type&columns=last_iteration&columns=parent.name&order=-last_update&filter=)| main |
+| Модель | Ссылка на эксперимент | Ссылка на ветку | Score (auc-roc) |
+|:------:|:---------------------:|:---------------:|:---------------:|
+|XGBoost|[ссылка](https://app.clear.ml/projects/d9a3d27351d942639a3a8a5fcd336006/experiments/9acbf0f2089b4593963b027dadf5fc46/hyper-params/configuration/OmegaConf?columns=selected&columns=name&columns=tags&columns=status&columns=project.name&columns=users&columns=started&columns=last_update&columns=type&columns=last_iteration&columns=parent.name&order=-last_update&filter=)| main | 85.335962402764 |
