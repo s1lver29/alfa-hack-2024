@@ -1,17 +1,17 @@
-train_test_split_is: False
-hyperparameters_optimization_is: False
+train_test_split_is: True
+hyperparameters_optimization_is: True
 save_model: null
-predict_and_save_test_data: True
+predict_and_save_test_data: False
 
 clearml:
   project_name: "Alfa_hack"
-  task_name: "XGBoost train sub_train_dataset 05.11.24 v1.1"
+  task_name: "Catboost hyperparameters sub_train_dataset 07.11.24 v1.0"
   queue: null
 
 dataset_train:
   project_name: "Alfa_hack"
-  dataset_name: "train_data_full"
-  file_name: "train_dataset.parquet"
+  dataset_name: "train_data_sub"
+  file_name: "sub_train_dataset.parquet"
   target_columns: target
 
 dataset_test:

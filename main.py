@@ -8,7 +8,12 @@ from omegaconf import DictConfig
 from sklearn.model_selection import StratifiedKFold
 
 from metrics import calculate_classification_metrics, calculation_confusion_matrix
-from model import predict, train_model
+from model import (
+    XGBoostClassifier,
+    RandomForestClassifier,
+    SVMClassifier,
+    CatBoostClassifier,
+)
 from preprocessing import load_data
 
 
@@ -18,6 +23,7 @@ class MLWorkflow:
         self.task = self.init_clearml_task()
         self.logger = Logger.current_logger()
         self.model = None
+        self.type_models = CatBoostClassifier()
 
     def init_clearml_task(self) -> Task:
         """Инициализация задачи ClearML и логирование гиперпараметров."""
@@ -51,19 +57,19 @@ class MLWorkflow:
 
     def train(self, data):
         """Обучение модели"""
-        self.model = train_model(
+        self.model = self.type_models.train_model(
             data=data.drop(self.config.dataset_train.target_columns),
             target=data.select(self.config.dataset_train.target_columns),
             **self.config.model,
         )
 
     def evaluate_model(self, data):
-        predictions = predict(
+        predictions = self.type_models.predict(
             self.model,
             data.drop(self.config.dataset_train.target_columns),
             predict_proba_is=False,
         )
-        predict_proba = predict(
+        predict_proba = self.type_models.predict(
             self.model,
             data.drop(self.config.dataset_train.target_columns),
             predict_proba_is=True,
@@ -98,25 +104,48 @@ class MLWorkflow:
 
         def objective(trial):
             params = {
-                "objective": "binary:logistic",
-                "eval_metric": "logloss",
-                "tree_method": "hist",
-                "device": "cuda",
-                "max_depth": trial.suggest_int("max_depth", 3, 16),
+                "loss_function": "Logloss",
+                "iterations": trial.suggest_int("iterations", 100, 1000),
+                "depth": trial.suggest_int("depth", 4, 12),
                 "learning_rate": trial.suggest_float(
-                    "learning_rate", 0.00001, 0.1, log=True
+                    "learning_rate", 0.0001, 0.4, log=True
                 ),
-                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-                "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-                "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
-                "gamma": trial.suggest_float("gamma", 0, 5),
-                "scale_pos_weight": 1,  # Баланс классов
-                "random_state": trial.suggest_int("random_state", 1, 250),
-                "max_delta_step": trial.suggest_float("max_delta_step", 0, 10),
-                "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
-                "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
+                "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 0.01, 10),
+                "border_count": trial.suggest_int("border_count", 32, 128),
+                "random_strength": trial.suggest_float("random_strength", 1, 20),
+                "scale_pos_weight": trial.suggest_float("scale_pos_weight", 1, 10),
+                "bootstrap_type": trial.suggest_categorical(
+                    "bootstrap_type", ["Bayesian", "Bernoulli"]
+                ),
+                "grow_policy": trial.suggest_categorical(
+                    "grow_policy", ["SymmetricTree", "Depthwise", "Lossguide"]
+                ),
+                "random_seed": trial.suggest_int("random_seed", 1, 100),
+                "verbose": 0,
+                "cat_features": [
+                    "feature_31",
+                    "feature_43",
+                    "feature_61",
+                    "feature_64",
+                    "feature_80",
+                    "feature_143",
+                    "feature_191",
+                    "feature_209",
+                    "feature_299",
+                    "feature_300",
+                    "feature_446",
+                    "feature_459",
+                ],
+                "task_type": "GPU",
             }
+
+            if params["bootstrap_type"] == "Bayesian":
+                params["bagging_temperature"] = trial.suggest_float(
+                    "bagging_temperature", 0, 5
+                )
+            if params["bootstrap_type"] == "Bernoulli":
+                params["subsample"] = trial.suggest_float("subsample", 0.6, 1.0)
+
             fold_metrics = {
                 "f1-score": [],
                 "precision": [],
@@ -128,10 +157,12 @@ class MLWorkflow:
                 X_train, X_val = train_data[train_index], train_data[val_index]
                 y_train, y_val = train_target[train_index], train_target[val_index]
 
-                model = train_model(X_train, y_train, **params)
+                model = self.type_models.train_model(X_train, y_train, **params)
 
-                y_pred = predict(model, X_val, predict_proba_is=False)
-                y_pred_proba = predict(model, X_val, predict_proba_is=True)
+                y_pred = self.type_models.predict(model, X_val, predict_proba_is=False)
+                y_pred_proba = self.type_models.predict(
+                    model, X_val, predict_proba_is=True
+                )
 
                 metrics = calculate_classification_metrics(y_val, y_pred, y_pred_proba)
 
@@ -165,7 +196,9 @@ class MLWorkflow:
     def predict_on_test_data(self):
         """Выполнение предсказаний на тестовом наборе данных."""
         test_data = self.load_data(dataset_type="test")
-        predictions = predict(self.model, test_data.drop("id"), predict_proba_is=True)
+        predictions = self.type_models.predict(
+            self.model, test_data.drop("id"), predict_proba_is=True
+        )
         predictions_df = pl.DataFrame({"id": test_data["id"], "target": predictions})
 
         return predictions_df
@@ -198,7 +231,7 @@ class MLWorkflow:
             best_params = self.optimize_hyperparameters(train_data, val_data)
 
             # Обучаем с лучшими параметрами
-            self.model = train_model(
+            self.model = self.type_models.train_model(
                 data=train_data.drop(self.config.dataset_train.target_columns),
                 target=train_data.select(self.config.dataset_train.target_columns),
                 **best_params,
