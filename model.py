@@ -1,10 +1,10 @@
 import numpy as np
 import polars as pl
 from catboost import CatBoostClassifier as CatBoostModel
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
+from sklearn.linear_model import LinearRegression
 
 
 class XGBoostClassifier:
@@ -104,7 +104,7 @@ class LightGBMClassifier:
 class SVMClassifier:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-        model = SVC(**args_model)
+        model = LinearRegression(**args_model)
         model.fit(data, target)
         return model
 
@@ -119,6 +119,7 @@ class SVMClassifier:
 def blending_ensemble_train(
     xgb_model,
     cat_model,
+    lgbm_model,
     X_train: pl.DataFrame,
     y_train: pl.DataFrame,
     **args_model,
@@ -126,9 +127,12 @@ def blending_ensemble_train(
     # Получение предсказаний на обучающем наборе
     xgb_preds_train = xgb_model.predict_proba(X_train)[:, 1]
     cat_preds_train = cat_model.predict_proba(X_train)[:, 1]
+    lgbm_pred_train = lgbm_model.predict_proba(X_train)[:, 1]
 
     # Объединяем предсказания для мета-модели
-    train_meta_features = np.column_stack((xgb_preds_train, cat_preds_train))
+    train_meta_features = np.column_stack(
+        (xgb_preds_train, cat_preds_train, lgbm_pred_train)
+    )
 
     # Обучение мета-модели (SVC)
     meta_model = SVMClassifier.train_model(train_meta_features, y_train, **args_model)
@@ -136,13 +140,16 @@ def blending_ensemble_train(
     return meta_model
 
 
-def blending_ensemble_predict(meta_model, xgb_model, cat_model, X_test):
+def blending_ensemble_predict(meta_model, xgb_model, lgbm_model, cat_model, X_test):
     # Получение предсказаний базовых моделей на тестовом наборе
     xgb_preds_test = xgb_model.predict_proba(X_test)[:, 1]
     cat_preds_test = cat_model.predict_proba(X_test)[:, 1]
+    lgbm_preds_test = lgbm_model.predict_proba(X_test)[:, 1]
 
     # Объединяем предсказания тестовых данных для мета-модели
-    test_meta_features = np.column_stack((xgb_preds_test, cat_preds_test))
+    test_meta_features = np.column_stack(
+        (xgb_preds_test, cat_preds_test, lgbm_preds_test)
+    )
 
     # Финальные предсказания мета-модели
     final_predictions = SVMClassifier.predict(meta_model, test_meta_features)

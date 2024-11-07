@@ -118,7 +118,7 @@ class MLWorkflow:
                 "reg_alpha": trial.suggest_float("reg_alpha", 0.001, 5),
                 "reg_lambda": trial.suggest_float("reg_lambda", 0.001, 5),
                 "random_state": trial.suggest_int("random_state", 1, 100),
-                "device": "gpu",
+                "device": "cpu",
             }
 
             fold_metrics = {
@@ -230,17 +230,27 @@ class MLWorkflow:
 
                 task_2 = Task.get_task(
                     project_name="Alfa_hack",
-                    task_name="Blending Catboost train full_dataset 07.11.24 v1.0",
+                    task_name="Blending Catboost train full_dataset 07.11.24 v1.1",
                 )
                 with open(
                     task_2.artifacts["catboost_weights"].get_local_copy(), "rb"
                 ) as file:
                     model_2 = pickle.load(file)
 
+                task_3 = Task.get_task(
+                    project_name="Alfa_hack",
+                    task_name="Blending LGBM train full_dataset 07.11.24 v1.0",
+                )
+                with open(
+                    task_3.artifacts["lgbm_weights"].get_local_copy(), "rb"
+                ) as file:
+                    model_3 = pickle.load(file)
+
                 self.logger.report_text("Train blending")
                 meta_model = blending_ensemble_train(
                     model_1,
                     model_2,
+                    model_3,
                     data.drop(self.config.dataset_train.target_columns).to_pandas(
                         use_pyarrow_extension_array=True
                     ),
@@ -278,6 +288,7 @@ class MLWorkflow:
                         meta_model,
                         model_1,
                         model_2,
+                        model_3,
                         test_data.drop("id").to_pandas(
                             use_pyarrow_extension_array=True
                         ),
