@@ -2,7 +2,7 @@ import numpy as np
 import polars as pl
 from catboost import CatBoostClassifier as CatBoostModel
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 
 
@@ -21,7 +21,7 @@ class XGBoostClassifier:
 
     @staticmethod
     def save_model(model, path: str):
-        model.save_model(path)
+        model.save_model(path + ".json")
 
     @staticmethod
     def load_model(path: str):
@@ -51,7 +51,7 @@ class CatBoostClassifier:
 
     @staticmethod
     def save_model(model, path: str):
-        model.save_model(path)
+        model.save_model(path + ".cbm")
 
     @staticmethod
     def load_model(path: str):
@@ -64,7 +64,7 @@ class RandomForest:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
         model = RandomForestClassifier(**args_model)
-        model.fit(data, target)
+        model.fit(data, target.to_numpy().flatten())
         return model
 
     @staticmethod
@@ -77,7 +77,7 @@ class RandomForest:
     def save_model(model, path: str):
         import joblib
 
-        joblib.dump(model, path)
+        joblib.dump(model, path + ".joblib")
 
     @staticmethod
     def load_model(path: str):
@@ -86,54 +86,50 @@ class RandomForest:
         return joblib.load(path)
 
 
-class SVMClassifier:
+class LRegression:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-        model = SVC(**args_model)
+        model = LogisticRegression(**args_model)
         model.fit(data, target)
         return model
 
     @staticmethod
-    def predict(model, data: pl.DataFrame):
+    def predict(model, data: pl.DataFrame, predict_proba_is: bool = True):
+        if predict_proba_is:
+            return model.predict_proba(data)[:, 1]
         return model.predict(data)
 
 
 # Обучение и блендинг
-def blending_ensemble(
-    X_train: pl.DataFrame, y_train: pl.DataFrame, X_test: pl.DataFrame
+def blending_ensemble_train(
+    xgb_model,
+    cat_model,
+    X_train: pl.DataFrame,
+    y_train: pl.DataFrame,
+    **args_model,
 ):
-    # Обучение базовых моделей
-    xgb_model = XGBoostClassifier.train_model(X_train, y_train, n_estimators=100)
-    cat_model = CatBoostClassifier.train_model(
-        X_train, y_train, iterations=100, depth=6
-    )
-    rf_model = RandomForest.train_model(X_train, y_train, n_estimators=100)
-
     # Получение предсказаний на обучающем наборе
-    xgb_preds_train = XGBoostClassifier.predict(xgb_model, X_train)
-    cat_preds_train = CatBoostClassifier.predict(cat_model, X_train)
-    rf_preds_train = RandomForest.predict(rf_model, X_train)
+    xgb_preds_train = xgb_model.predict_proba(X_train)[:, 1]
+    cat_preds_train = cat_model.predict_proba(X_train)[:, 1]
 
     # Объединяем предсказания для мета-модели
-    train_meta_features = np.column_stack(
-        (xgb_preds_train, cat_preds_train, rf_preds_train)
-    )
+    train_meta_features = np.column_stack((xgb_preds_train, cat_preds_train))
 
     # Обучение мета-модели (SVC)
-    meta_model = SVMClassifier.train_model(pl.DataFrame(train_meta_features), y_train)
+    meta_model = LRegression.train_model(train_meta_features, y_train, **args_model)
 
+    return meta_model
+
+
+def blending_ensemble_predict(meta_model, xgb_model, cat_model, X_test):
     # Получение предсказаний базовых моделей на тестовом наборе
-    xgb_preds_test = XGBoostClassifier.predict(xgb_model, X_test)
-    cat_preds_test = CatBoostClassifier.predict(cat_model, X_test)
-    rf_preds_test = RandomForest.predict(rf_model, X_test)
+    xgb_preds_test = xgb_model.predict_proba(X_test)[:, 1]
+    cat_preds_test = cat_model.predict_proba(X_test)[:, 1]
 
     # Объединяем предсказания тестовых данных для мета-модели
-    test_meta_features = np.column_stack(
-        (xgb_preds_test, cat_preds_test, rf_preds_test)
-    )
+    test_meta_features = np.column_stack((xgb_preds_test, cat_preds_test))
 
     # Финальные предсказания мета-модели
-    final_predictions = SVMClassifier.predict(
-        meta_model, pl.DataFrame(test_meta_features)
-    )
+    final_predictions = LRegression.predict(meta_model, test_meta_features)
+
     return final_predictions

@@ -1,5 +1,4 @@
 import hydra
-import joblib
 import numpy as np
 import optuna
 import polars as pl
@@ -10,11 +9,14 @@ from sklearn.model_selection import StratifiedKFold
 from metrics import calculate_classification_metrics, calculation_confusion_matrix
 from model import (
     XGBoostClassifier,
-    RandomForestClassifier,
-    SVMClassifier,
+    RandomForest,
+    LRegression,
     CatBoostClassifier,
+    blending_ensemble_train,
+    blending_ensemble_predict,
 )
 from preprocessing import load_data
+import pickle
 
 
 class MLWorkflow:
@@ -23,7 +25,7 @@ class MLWorkflow:
         self.task = self.init_clearml_task()
         self.logger = Logger.current_logger()
         self.model = None
-        self.type_models = CatBoostClassifier()
+        self.type_models = LRegression()
 
     def init_clearml_task(self) -> Task:
         """Инициализация задачи ClearML и логирование гиперпараметров."""
@@ -104,47 +106,15 @@ class MLWorkflow:
 
         def objective(trial):
             params = {
-                "loss_function": "Logloss",
-                "iterations": trial.suggest_int("iterations", 100, 1000),
-                "depth": trial.suggest_int("depth", 4, 12),
-                "learning_rate": trial.suggest_float(
-                    "learning_rate", 0.0001, 0.4, log=True
+                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+                "max_depth": trial.suggest_int("max_depth", 5, 50, step=5),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 20),
+                "max_features": trial.suggest_categorical(
+                    "max_features", ["sqrt", "log2"]
                 ),
-                "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 0.01, 10),
-                "border_count": trial.suggest_int("border_count", 32, 128),
-                "random_strength": trial.suggest_float("random_strength", 1, 20),
-                "scale_pos_weight": trial.suggest_float("scale_pos_weight", 1, 10),
-                "bootstrap_type": trial.suggest_categorical(
-                    "bootstrap_type", ["Bayesian", "Bernoulli"]
-                ),
-                "grow_policy": trial.suggest_categorical(
-                    "grow_policy", ["SymmetricTree", "Depthwise", "Lossguide"]
-                ),
-                "random_seed": trial.suggest_int("random_seed", 1, 100),
-                "verbose": 0,
-                "cat_features": [
-                    "feature_31",
-                    "feature_43",
-                    "feature_61",
-                    "feature_64",
-                    "feature_80",
-                    "feature_143",
-                    "feature_191",
-                    "feature_209",
-                    "feature_299",
-                    "feature_300",
-                    "feature_446",
-                    "feature_459",
-                ],
-                "task_type": "GPU",
+                "bootstrap": trial.suggest_categorical("bootstrap", [True, False]),
             }
-
-            if params["bootstrap_type"] == "Bayesian":
-                params["bagging_temperature"] = trial.suggest_float(
-                    "bagging_temperature", 0, 5
-                )
-            if params["bootstrap_type"] == "Bernoulli":
-                params["subsample"] = trial.suggest_float("subsample", 0.6, 1.0)
 
             fold_metrics = {
                 "f1-score": [],
@@ -239,23 +209,80 @@ class MLWorkflow:
             self.evaluate_model(val_data)
 
         else:
-            if self.config.train_test_split_is:
-                self.logger.report_text("Train model and evaluate on validation data")
-                self.train(data["train"])
-                self.evaluate_model(data["test"])
+            if self.config.blending:
+                self.logger.report_text("Start blending")
+                print(list(data.keys()))
+                data = data["test"]
+
+                task_1 = Task.get_task(
+                    project_name="Alfa_hack",
+                    task_name="Blending XGBoost train full_dataset 07.11.24 v1.0",
+                )
+                with open(
+                    task_1.artifacts["xgboost_weights"].get_local_copy(), "rb"
+                ) as file:
+                    model_1 = pickle.load(file)
+
+                task_2 = Task.get_task(
+                    project_name="Alfa_hack",
+                    task_name="Blending Catboost train full_dataset 07.11.24 v1.0",
+                )
+                with open(
+                    task_2.artifacts["catboost_weights"].get_local_copy(), "rb"
+                ) as file:
+                    model_2 = pickle.load(file)
+
+                self.logger.report_text("Train blending")
+                meta_model = blending_ensemble_train(
+                    model_1,
+                    model_2,
+                    data.drop(self.config.dataset_train.target_columns).to_pandas(
+                        use_pyarrow_extension_array=True
+                    ),
+                    data.select(self.config.dataset_train.target_columns).to_pandas(
+                        use_pyarrow_extension_array=True
+                    ),
+                    **self.config.model,
+                )
+
+                del data
             else:
-                self.logger.report_text("Training model on full dataset")
-                self.train(data)
+                if self.config.train_test_split_is:
+                    self.logger.report_text(
+                        "Train model and evaluate on validation data"
+                    )
+                    self.train(data["train"])
+                    self.evaluate_model(data["test"])
+                else:
+                    self.logger.report_text("Training model on full dataset")
+                    self.train(data)
 
             if self.config.save_model:
                 self.logger.report_text("Save model")
-                joblib.dump(self.model, self.config.save_model, compress=True)
-                # self.task.upload_artifact(name="trained_model", artifact_object=self.model)
+                self.task.upload_artifact(
+                    name=self.config.save_model, artifact_object=self.model
+                )
 
             # Предсказания и сохранение, если указано
             if self.config.predict_and_save_test_data:
                 self.logger.report_text("Prediction test data and save prediction")
-                predictions_df = self.predict_on_test_data()
+                if self.config.blending:
+                    test_data = self.load_data(dataset_type="test")
+
+                    predictions = blending_ensemble_predict(
+                        meta_model,
+                        model_1,
+                        model_2,
+                        test_data.drop("id").to_pandas(
+                            use_pyarrow_extension_array=True
+                        ),
+                    )
+
+                    predictions_df = pl.DataFrame(
+                        {"id": test_data["id"], "target": predictions}
+                    )
+                else:
+                    predictions_df = self.predict_on_test_data()
                 self.save_submission(predictions_df)
 
 
