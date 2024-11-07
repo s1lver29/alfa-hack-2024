@@ -2,8 +2,9 @@ import numpy as np
 import polars as pl
 from catboost import CatBoostClassifier as CatBoostModel
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
 from xgboost import XGBClassifier
+import lightgbm.lgb import LGBMClassifier
 
 
 class XGBoostClassifier:
@@ -86,10 +87,23 @@ class RandomForest:
         return joblib.load(path)
 
 
-class LRegression:
+class LightGBMClassifier:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-        model = LogisticRegression(**args_model)
+        model = LGBMClassifier(**args_model)
+        model.fit(data, target)
+        return model
+    
+    @staticmethod
+    def predict(model, data: pl.DataFrame, predict_proba_is: bool = True):
+        if predict_proba_is:
+            return model.predict_proba(data)[:, 1]
+        return model.predict(data)
+
+class SVMClassifier:
+    @staticmethod
+    def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
+        model = SVC(**args_model)
         model.fit(data, target)
         return model
 
@@ -116,7 +130,7 @@ def blending_ensemble_train(
     train_meta_features = np.column_stack((xgb_preds_train, cat_preds_train))
 
     # Обучение мета-модели (SVC)
-    meta_model = LRegression.train_model(train_meta_features, y_train, **args_model)
+    meta_model = SVMClassifier.train_model(train_meta_features, y_train, **args_model)
 
     return meta_model
 
@@ -130,6 +144,6 @@ def blending_ensemble_predict(meta_model, xgb_model, cat_model, X_test):
     test_meta_features = np.column_stack((xgb_preds_test, cat_preds_test))
 
     # Финальные предсказания мета-модели
-    final_predictions = LRegression.predict(meta_model, test_meta_features)
+    final_predictions = SVMClassifier.predict(meta_model, test_meta_features)
 
     return final_predictions

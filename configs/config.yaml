@@ -1,18 +1,18 @@
 train_test_split_is: True
-hyperparameters_optimization_is: False
+hyperparameters_optimization_is: True
 save_model: null
-predict_and_save_test_data: True
-blending: True
+predict_and_save_test_data: False
+blending: False
 
 clearml:
   project_name: "Alfa_hack"
-  task_name: "Blending final LogReg train and predict full_dataset 07.11.24 v1.1"
+  task_name: "LGBM hyperparameters sub_train_dataset 07.11.24 v1.0"
   queue: null
 
 dataset_train:
   project_name: "Alfa_hack"
-  dataset_name: "train_data_full"
-  file_name: "train_dataset.parquet"
+  dataset_name: "LGBMClassifier"
+  file_name: "sub_train_dataset.parquet"
   target_columns: target
 
 dataset_test:
@@ -21,11 +21,13 @@ dataset_test:
   file_name: "test_dataset.parquet"
 
 model:
-  C: 0.15674
-  solver: "lbfgs"
-  penalty: "l2"
-  random_state: 1234
+  C: 0.546
+  kernel: "rbf"
+  gamma: "scale"
+  random_state: 64
+  probability: True
   class_weight: "balanced"
+  max_iter: 10000
 
 
 hyperparameters:

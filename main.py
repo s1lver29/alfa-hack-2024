@@ -10,8 +10,9 @@ from metrics import calculate_classification_metrics, calculation_confusion_matr
 from model import (
     XGBoostClassifier,
     RandomForest,
-    LRegression,
+    SVMClassifier,
     CatBoostClassifier,
+    LGBMClassifier,
     blending_ensemble_train,
     blending_ensemble_predict,
 )
@@ -25,7 +26,7 @@ class MLWorkflow:
         self.task = self.init_clearml_task()
         self.logger = Logger.current_logger()
         self.model = None
-        self.type_models = LRegression()
+        self.type_models = LGBMClassifier()
 
     def init_clearml_task(self) -> Task:
         """Инициализация задачи ClearML и логирование гиперпараметров."""
@@ -106,14 +107,18 @@ class MLWorkflow:
 
         def objective(trial):
             params = {
-                "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-                "max_depth": trial.suggest_int("max_depth", 5, 50, step=5),
-                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
-                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 20),
-                "max_features": trial.suggest_categorical(
-                    "max_features", ["sqrt", "log2"]
+                "n_estimators": trial.suggest_int("n_estimators", 50, 500),
+                "learning_rate": trial.suggest_loguniform(
+                    "learning_rate", 0.00001, 1.5
                 ),
-                "bootstrap": trial.suggest_categorical("bootstrap", [True, False]),
+                "max_depth": trial.suggest_int("max_depth", 2, 20),
+                "subsample": trial.suggest_uniform("subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_uniform("colsample_bytree", 0.5, 1.0),
+                "class_weight": "balanced",
+                "reg_alpha": trial.suggest_float("reg_alpha", 0, 5, log=True),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0, 5, log=True),
+                "random_state": trial.suggest_int("random_state", 1, 100),
+                "device": "gpu",
             }
 
             fold_metrics = {
