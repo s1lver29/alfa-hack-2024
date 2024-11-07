@@ -4,7 +4,7 @@ from catboost import CatBoostClassifier as CatBoostModel
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
-import lightgbm.lgb import LGBMClassifier
+from lightgbm import LGBMClassifier
 
 
 class XGBoostClassifier:
@@ -93,12 +93,13 @@ class LightGBMClassifier:
         model = LGBMClassifier(**args_model)
         model.fit(data, target)
         return model
-    
+
     @staticmethod
     def predict(model, data: pl.DataFrame, predict_proba_is: bool = True):
         if predict_proba_is:
             return model.predict_proba(data)[:, 1]
         return model.predict(data)
+
 
 class SVMClassifier:
     @staticmethod

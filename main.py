@@ -12,7 +12,7 @@ from model import (
     RandomForest,
     SVMClassifier,
     CatBoostClassifier,
-    LGBMClassifier,
+    LightGBMClassifier,
     blending_ensemble_train,
     blending_ensemble_predict,
 )
@@ -26,7 +26,7 @@ class MLWorkflow:
         self.task = self.init_clearml_task()
         self.logger = Logger.current_logger()
         self.model = None
-        self.type_models = LGBMClassifier()
+        self.type_models = LightGBMClassifier()
 
     def init_clearml_task(self) -> Task:
         """Инициализация задачи ClearML и логирование гиперпараметров."""
@@ -108,15 +108,15 @@ class MLWorkflow:
         def objective(trial):
             params = {
                 "n_estimators": trial.suggest_int("n_estimators", 50, 500),
-                "learning_rate": trial.suggest_loguniform(
-                    "learning_rate", 0.00001, 1.5
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 0.00001, 1.5, log=True
                 ),
                 "max_depth": trial.suggest_int("max_depth", 2, 20),
-                "subsample": trial.suggest_uniform("subsample", 0.5, 1.0),
-                "colsample_bytree": trial.suggest_uniform("colsample_bytree", 0.5, 1.0),
+                "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
                 "class_weight": "balanced",
-                "reg_alpha": trial.suggest_float("reg_alpha", 0, 5, log=True),
-                "reg_lambda": trial.suggest_float("reg_lambda", 0, 5, log=True),
+                "reg_alpha": trial.suggest_float("reg_alpha", 0.001, 5),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.001, 5),
                 "random_state": trial.suggest_int("random_state", 1, 100),
                 "device": "gpu",
             }

@@ -11,7 +11,7 @@ clearml:
 
 dataset_train:
   project_name: "Alfa_hack"
-  dataset_name: "LGBMClassifier"
+  dataset_name: "train_data_sub"
   file_name: "sub_train_dataset.parquet"
   target_columns: target
 
