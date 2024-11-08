@@ -5,11 +5,12 @@ import polars as pl
 from clearml import Logger, Task
 from omegaconf import DictConfig
 from sklearn.model_selection import StratifiedKFold
+import pandas as pd
+import pyarrow
 
 from metrics import calculate_classification_metrics, calculation_confusion_matrix
 from model import (
     XGBoostClassifier,
-    RandomForest,
     LogReg,
     CatBoostClassifier,
     LightGBMClassifier,
@@ -252,10 +253,10 @@ class MLWorkflow:
                     model_2,
                     model_3,
                     data.drop(self.config.dataset_train.target_columns).to_pandas(
-                        use_pyarrow_extension_array=True
+                        use_pyarrow_extension_array=False
                     ),
                     data.select(self.config.dataset_train.target_columns).to_pandas(
-                        use_pyarrow_extension_array=True
+                        use_pyarrow_extension_array=False
                     ),
                     **self.config.model,
                 )
@@ -290,7 +291,7 @@ class MLWorkflow:
                         model_2,
                         model_3,
                         test_data.drop("id").to_pandas(
-                            use_pyarrow_extension_array=True
+                            use_pyarrow_extension_array=False
                         ),
                     )
 

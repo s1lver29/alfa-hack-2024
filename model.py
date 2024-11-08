@@ -1,10 +1,9 @@
 import numpy as np
 import polars as pl
 from catboost import CatBoostClassifier as CatBoostModel
-from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
 
 
 class XGBoostClassifier:
@@ -61,32 +60,6 @@ class CatBoostClassifier:
         return model
 
 
-class RandomForest:
-    @staticmethod
-    def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-        model = RandomForestClassifier(**args_model)
-        model.fit(data, target.to_numpy().flatten())
-        return model
-
-    @staticmethod
-    def predict(model, data: pl.DataFrame, predict_proba_is: bool = True):
-        if predict_proba_is:
-            return model.predict_proba(data)[:, 1]
-        return model.predict(data)
-
-    @staticmethod
-    def save_model(model, path: str):
-        import joblib
-
-        joblib.dump(model, path + ".joblib")
-
-    @staticmethod
-    def load_model(path: str):
-        import joblib
-
-        return joblib.load(path)
-
-
 class LightGBMClassifier:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
@@ -104,7 +77,7 @@ class LightGBMClassifier:
 class LogReg:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
-        model = LinearRegression(**args_model)
+        model = LogisticRegression(**args_model)
         model.fit(data, target)
         return model
 

@@ -6,8 +6,8 @@ blending: True
 
 clearml:
   project_name: "Alfa_hack"
-  task_name: "Blending LogReg final train full_dataset 07.11.24 v1.1"
-  queue: null
+  task_name: "Blending LogReg final train full_dataset 08.11.24 v1.2"
+  queue: "default"
 
 dataset_train:
   project_name: "Alfa_hack"
@@ -21,11 +21,11 @@ dataset_test:
   file_name: "test_dataset.parquet"
 
 model:
-  C: 0.652
+  C: 10
   solver: lbfgs
   penalty: l2
-  random_state: 1234
-  class_weight: balanced
+  random_state: 78
+  # class_weight: balanced
 
 
 hyperparameters:
