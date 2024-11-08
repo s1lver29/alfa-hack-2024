@@ -101,7 +101,7 @@ class LightGBMClassifier:
         return model.predict(data)
 
 
-class SVMClassifier:
+class LogReg:
     @staticmethod
     def train_model(data: pl.DataFrame, target: pl.DataFrame, **args_model):
         model = LinearRegression(**args_model)
@@ -135,7 +135,7 @@ def blending_ensemble_train(
     )
 
     # Обучение мета-модели (SVC)
-    meta_model = SVMClassifier.train_model(train_meta_features, y_train, **args_model)
+    meta_model = LogReg.train_model(train_meta_features, y_train, **args_model)
 
     return meta_model
 
@@ -152,6 +152,6 @@ def blending_ensemble_predict(meta_model, xgb_model, lgbm_model, cat_model, X_te
     )
 
     # Финальные предсказания мета-модели
-    final_predictions = SVMClassifier.predict(meta_model, test_meta_features)
+    final_predictions = LogReg.predict(meta_model, test_meta_features)
 
     return final_predictions

@@ -10,7 +10,7 @@ from metrics import calculate_classification_metrics, calculation_confusion_matr
 from model import (
     XGBoostClassifier,
     RandomForest,
-    SVMClassifier,
+    LogReg,
     CatBoostClassifier,
     LightGBMClassifier,
     blending_ensemble_train,
@@ -26,7 +26,7 @@ class MLWorkflow:
         self.task = self.init_clearml_task()
         self.logger = Logger.current_logger()
         self.model = None
-        self.type_models = LightGBMClassifier()
+        self.type_models = LogReg()
 
     def init_clearml_task(self) -> Task:
         """Инициализация задачи ClearML и логирование гиперпараметров."""

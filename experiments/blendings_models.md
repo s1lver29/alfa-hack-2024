@@ -21,7 +21,7 @@ model:
 
 Catboost
 ```yaml
-models:
+model:
   loss_function: "Logloss"
   iterations: 850
   depth: 8
@@ -37,4 +37,16 @@ models:
   verbose: 0
   task_type: "GPU"
   cat_features: ["feature_31", "feature_43", "feature_61", "feature_64", "feature_80", "feature_143", "feature_191", "feature_209", "feature_299", "feature_300", "feature_446", "feature_459" ]
+```
+
+```yaml
+model:
+  n_estimators: 127
+  learning_rate: 0.012835847658688107
+  max_depth: 18
+  subsample: 0.7925881420008511
+  colsample_bytree: 0.8773532749104792
+  reg_alpha: 1.700386005699518
+  reg_lambda: 1.5332314072612385
+  random_state: 8
 ```
