@@ -4,6 +4,8 @@ from catboost import CatBoostClassifier as CatBoostModel
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 class XGBoostClassifier:
@@ -102,27 +104,40 @@ def blending_ensemble_train(
     cat_preds_train = cat_model.predict_proba(X_train)[:, 1]
     lgbm_pred_train = lgbm_model.predict_proba(X_train)[:, 1]
 
+    standart_scaler = StandardScaler()
+    X_train_standart_scaler = standart_scaler.fit_transform(X_train)
+
+    pca = PCA(n_components=0.95)
+    X_train_pca = pca.fit_transform(X_train_standart_scaler)
+
     # Объединяем предсказания для мета-модели
-    train_meta_features = np.column_stack(
+    predict_base_models = np.column_stack(
         (xgb_preds_train, cat_preds_train, lgbm_pred_train)
     )
 
-    # Обучение мета-модели (SVC)
+    train_meta_features = np.column_stack((predict_base_models, X_train_pca))
+
     meta_model = LogReg.train_model(train_meta_features, y_train, **args_model)
 
-    return meta_model
+    return meta_model, standart_scaler, pca
 
 
-def blending_ensemble_predict(meta_model, xgb_model, lgbm_model, cat_model, X_test):
+def blending_ensemble_predict(
+    pca, standart_scaler, meta_model, xgb_model, lgbm_model, cat_model, X_test
+):
+    X_test_pca = pca.transform(standart_scaler.transform(X_test))
+
     # Получение предсказаний базовых моделей на тестовом наборе
     xgb_preds_test = xgb_model.predict_proba(X_test)[:, 1]
     cat_preds_test = cat_model.predict_proba(X_test)[:, 1]
     lgbm_preds_test = lgbm_model.predict_proba(X_test)[:, 1]
 
     # Объединяем предсказания тестовых данных для мета-модели
-    test_meta_features = np.column_stack(
+    predict_base_models = np.column_stack(
         (xgb_preds_test, cat_preds_test, lgbm_preds_test)
     )
+
+    test_meta_features = np.column_stack((predict_base_models, X_test_pca))
 
     # Финальные предсказания мета-модели
     final_predictions = LogReg.predict(meta_model, test_meta_features)

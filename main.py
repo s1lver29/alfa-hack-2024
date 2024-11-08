@@ -248,7 +248,7 @@ class MLWorkflow:
                     model_3 = pickle.load(file)
 
                 self.logger.report_text("Train blending")
-                meta_model = blending_ensemble_train(
+                meta_model, standart_scaler, pca = blending_ensemble_train(
                     model_1,
                     model_2,
                     model_3,
@@ -286,6 +286,8 @@ class MLWorkflow:
                     test_data = self.load_data(dataset_type="test")
 
                     predictions = blending_ensemble_predict(
+                        pca,
+                        standart_scaler,
                         meta_model,
                         model_1,
                         model_2,
