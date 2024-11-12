@@ -2,6 +2,21 @@ import polars as pl
 from clearml import Dataset
 from sklearn.model_selection import train_test_split
 
+CAT_FEATURES = [
+    "feature_31",
+    "feature_43",
+    "feature_61",
+    "feature_64",
+    "feature_80",
+    "feature_143",
+    "feature_191",
+    "feature_209",
+    "feature_299",
+    "feature_300",
+    "feature_446",
+    "feature_459",
+]
+
 
 def load_data(
     dataset_project: str,
@@ -30,6 +45,16 @@ def load_data(
         data = data.drop("id")
     data = data.drop("smpl")
 
+    data_sub_train_positive = data.filter(pl.col("target") == 1)
+    data_sub_train_negative = data.filter(pl.col("target") == 0).sample(
+        fraction=0.3, seed=421
+    )
+    data = pl.concat([data_sub_train_positive, data_sub_train_negative])
+
+    # ------
+    data = preprocessing_data(data)
+    # ------
+
     if train_test_split_is:
         train_data, test_data = train_test_split(
             data,
@@ -43,5 +68,11 @@ def load_data(
     return data
 
 
-def preprocessing_data():
-    pass
+def preprocessing_data(data: pl.DataFrame):
+    """Преобразуем типы данных для catboost в integer"""
+    for column in CAT_FEATURES:
+        data = data.with_columns(
+            data[column].cast(pl.Int64, strict=False).alias(column)
+        )
+
+    return data
